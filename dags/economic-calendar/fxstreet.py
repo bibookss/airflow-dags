@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+from pendulum import datetime
 
 from airflow import DAG
 from airflow.models import Variable
@@ -6,10 +7,9 @@ from airflow.providers.docker.operators.docker import DockerOperator
 
 default_args = {
     "retries": 5,
-    "retry_delay": timedelta(minutes=5),
+    "retry_delay": timedelta(seconds=5),
 }
 
-# REQUIRED Airflow Variables (must exist)
 IMAGE = Variable.get("ECON_CAL_IMAGE")
 DOCKER_NETWORK = Variable.get("DOCKER_NETWORK")
 
@@ -17,8 +17,8 @@ with DAG(
     dag_id="economic_calendar_fxstreet",
     description="Extract economic calendar data from fxstreet",
     default_args=default_args,
-    start_date=datetime(2020, 1, 1),
-    schedule="@daily",
+    start_date=datetime(2020, 1, 1, tz="UTC"),
+    schedule="55 23 * * *",
     catchup=False,
     tags=["economic-calendar", "fxstreet"],
 ) as dag:
@@ -29,12 +29,16 @@ with DAG(
         docker_url="unix://var/run/docker.sock",
         network_mode=DOCKER_NETWORK,
         mount_tmp_dir=False,
+        auto_remove=True,
+        do_xcom_push=False,
         command=[
-            "-s", "{{ ds_nodash }}",
-            "-e", "{{ macros.ds_add(ds, 1) | replace('-', '') }}",
+            "-s",
+            "{{ ds_nodash }}",
+            "-e",
+            "{{ macros.ds_add(ds, 1) | replace('-', '') }}",
         ],
         environment={
-            "S3_ENDPOINT": Variable.get("MINIO_ENDPOINT"), 
+            "S3_ENDPOINT": Variable.get("MINIO_ENDPOINT"),
             "S3_ACCESS_KEY": Variable.get("MINIO_ACCESS_KEY"),
             "S3_SECRET_KEY": Variable.get("MINIO_SECRET_KEY"),
         },
