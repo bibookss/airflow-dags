@@ -1,0 +1,9 @@
+[project]
+name = "airflow-dags"
+version = "0.1.0"
+description = "Minimal Airflow DAGs repository using DockerOperator"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "apache-airflow-providers-docker>=3.0.0",
+]
