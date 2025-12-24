@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from airflow import DAG
+from airflow.models import Variable
 from airflow.providers.docker.operators.docker import DockerOperator
 
 default_args = {
@@ -9,31 +9,34 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
 }
 
-CONFIG_DIR = Path(__file__).parent.parent.parent / "configs" / "economic-calendar"
+# REQUIRED Airflow Variables (must exist)
+IMAGE = Variable.get("ECON_CAL_IMAGE")
+DOCKER_NETWORK = Variable.get("DOCKER_NETWORK")
 
 with DAG(
     dag_id="economic_calendar_fxstreet",
-    default_args=default_args,
     description="Extract economic calendar data from fxstreet",
+    default_args=default_args,
     start_date=datetime(2020, 1, 1),
+    schedule="@daily",
     catchup=False,
     tags=["economic-calendar", "fxstreet"],
 ) as dag:
 
-    run_start = datetime.now().strftime("%Y%m%d")
-    run_end = (datetime.now() + timedelta(days=1)).strftime("%Y%m%d")
-
     extract_task = DockerOperator(
         task_id="extract_fxstreet_events",
-        image="lean-dev:latest",
-        docker_conn_id="docker_default",
-        network_mode="bridge",
+        image=IMAGE,
+        docker_url="unix://var/run/docker.sock",
+        network_mode=DOCKER_NETWORK,
+        mount_tmp_dir=False,
         command=[
-            "-s", run_start,
-            "-e", run_end,
-            "-c", "/app/config/fxstreet.yaml",
-            "--log-config", "/app/config/log.conf",
+            "-s", "{{ ds_nodash }}",
+            "-e", "{{ macros.ds_add(ds, 1) | replace('-', '') }}",
         ],
-        volumes=[f"{CONFIG_DIR}:/app/config:ro"],
+        environment={
+            "S3_ENDPOINT": Variable.get("MINIO_ENDPOINT"), 
+            "S3_ACCESS_KEY": Variable.get("MINIO_ACCESS_KEY"),
+            "S3_SECRET_KEY": Variable.get("MINIO_SECRET_KEY"),
+        },
     )
 
